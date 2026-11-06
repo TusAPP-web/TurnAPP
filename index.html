@@ -395,11 +395,15 @@ BASE: index(6).html — 17/09/2026
   const db = getFirestore(app);
   const googleProvider = new GoogleAuthProvider();
 
+  // Evita que el observador redirija antes de terminar la inicialización
+  // del negocio durante el registro o el primer ingreso con Google.
+  let inicializacionCuentaEnCurso = false;
+
   // --- ETAPA 8 — PASO 3: conservar la sesión y entrar automáticamente al panel ---
   setPersistence(auth, browserLocalPersistence)
     .then(() => {
       onAuthStateChanged(auth, (user) => {
-        if (user) {
+        if (user && !inicializacionCuentaEnCurso) {
           window.location.href = "./panel/panelindex.html";
         }
       });
@@ -444,11 +448,13 @@ BASE: index(6).html — 17/09/2026
   // --- login con Google (ambos botones) ---
   async function loginConGoogle(){
     hideMsg();
+    inicializacionCuentaEnCurso = true;
     try {
       const cred = await signInWithPopup(auth, googleProvider);
       await asegurarNegocio(cred.user.uid, null);
       window.location.href = "./panel/panelindex.html";
     } catch (err) {
+      inicializacionCuentaEnCurso = false;
       showMsg("No pudimos completar el ingreso con Google. Probá de nuevo.", "error");
     }
   }
@@ -521,11 +527,13 @@ BASE: index(6).html — 17/09/2026
       return;
     }
 
+    inicializacionCuentaEnCurso = true;
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       await asegurarNegocio(cred.user.uid, nombreComercio);
       window.location.href = "./panel/panelindex.html";
     } catch (err) {
+      inicializacionCuentaEnCurso = false;
       showMsg("No pudimos crear la cuenta. Probá con otro correo o revisá la contraseña (mínimo 6 caracteres).", "error");
     }
   });
