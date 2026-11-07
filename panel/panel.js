@@ -1,4 +1,4 @@
-import { firebaseConfig, soporte, registrarServiceWorker, mostrarAvisoActualizacion } from "../config.js";
+import { firebaseConfig, soporte, registrarServiceWorker, mostrarAvisoActualizacion, DIAS_PLAN_GRATIS } from "../config.js";
 
 import {
   formatearHora, normalizarNombre, normalizarTelefono, armarMailto,
@@ -16,7 +16,7 @@ import { formatearRangosDisponibilidad } from "./modulos/disponibilidad.js";
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    getFirestore, doc, getDoc, getDocs, setDoc, collection, query, orderBy, documentId, onSnapshot, updateDoc, addDoc, deleteDoc, Timestamp, runTransaction
+    getFirestore, doc, getDoc, getDocs, setDoc, collection, query, orderBy, documentId, onSnapshot, updateDoc, addDoc, deleteDoc, Timestamp, serverTimestamp, runTransaction
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const app = initializeApp(firebaseConfig);
@@ -558,8 +558,39 @@ import { formatearRangosDisponibilidad } from "./modulos/disponibilidad.js";
     }
     businessId = user.uid;
 
-    const negocioSnap = await getDoc(doc(db, "businesses", businessId));
-    const negocio = negocioSnap.exists() ? negocioSnap.data() : {};
+    // Si la cuenta de Auth existe pero el documento del negocio no se creó
+    // durante el registro, lo inicializamos aquí antes de cargar los módulos.
+    const negocioRef = doc(db, "businesses", businessId);
+    let negocioSnap;
+    try {
+      negocioSnap = await getDoc(negocioRef);
+      if (!negocioSnap.exists()) {
+        const nombreInicial = user.displayName || (user.email ? user.email.split("@")[0] : "Mi negocio");
+        const vencimiento = new Date();
+        vencimiento.setDate(vencimiento.getDate() + DIAS_PLAN_GRATIS);
+        await setDoc(negocioRef, {
+          nombreComercio: nombreInicial || "Mi negocio",
+          whatsapp: null,
+          tema: "default",
+          plan: "gratis",
+          fechaVencimiento: vencimiento,
+          creadoEl: serverTimestamp(),
+        });
+        negocioSnap = await getDoc(negocioRef);
+      }
+      if (!negocioSnap.exists()) {
+        throw new Error("El documento del negocio no existe después de intentar inicializarlo.");
+      }
+    } catch (err) {
+      console.error("Error inicializando el documento del negocio", err);
+      const msg = document.getElementById("horario-msg");
+      if (msg) {
+        msg.className = "msg show error";
+        msg.textContent = "No se pudo inicializar el consultorio. Revisá tu conexión o los permisos de la cuenta.";
+      }
+      return;
+    }
+    const negocio = negocioSnap.data() || {};
     document.getElementById("nombre-negocio-header").textContent = negocio.nombreComercio || "Mi negocio";
     const logoImg = document.getElementById("logo-negocio");
     if (negocio.logoUrl){ logoImg.src = negocio.logoUrl; logoImg.classList.add("show"); }
