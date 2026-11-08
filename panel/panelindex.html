@@ -40,7 +40,6 @@ BASE: ETAPA 8 PASO 3 CORREGIDO 3
       <a href="#" data-view="turnos">Turnos</a>
       <a href="#" data-view="calendario">Calendario</a>
       <a href="#" data-view="solicitudes">Solicitudes <span class="badge-count" id="badge-solicitudes" style="display:none;"></span></a>
-      <a href="#" data-view="servicios">Servicios / Catálogo</a>
       <a href="#" data-view="clientes">Clientes</a>
       <a href="#" data-view="caja">Caja <span class="pro-tag">PRO</span></a>
       <a href="#" data-view="config">Configuración</a>
@@ -59,7 +58,6 @@ BASE: ETAPA 8 PASO 3 CORREGIDO 3
       <a href="#" data-view="turnos">Turnos</a>
       <a href="#" data-view="calendario">Calendario</a>
       <a href="#" data-view="solicitudes">Solicitudes <span class="badge-count" id="badge-solicitudes-sidebar" style="display:none;"></span></a>
-      <a href="#" data-view="servicios">Servicios / Catálogo</a>
       <a href="#" data-view="clientes">Clientes</a>
       <a href="#" data-view="caja">Caja <span class="pro-tag">PRO</span></a>
       <a href="#" data-view="config">Configuración</a>
@@ -106,7 +104,7 @@ BASE: ETAPA 8 PASO 3 CORREGIDO 3
     </section>
 
     <section class="view" id="view-servicios">
-      <h1 class="view-title">Servicios / Catálogo</h1>
+      <h1 class="view-title">Servicios y precios</h1>
       <p class="view-sub">Precios, duración y ofertas de lo que ve el cliente en tu catálogo público.</p>
       <div class="turnos-list" id="servicios-list">
         <div class="empty-state">Cargando servicios…</div>
@@ -260,6 +258,7 @@ BASE: ETAPA 8 PASO 3 CORREGIDO 3
           <input type="text" id="link-catalogo" readonly style="flex:1; min-width:180px; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--cream); font-family:inherit; font-size:calc(13px * var(--ui-scale));">
           <button class="submit" id="btn-copiar-catalogo" style="width:auto; padding:10px 18px;">Copiar</button>
         </div>
+        <button type="button" data-view="servicios" class="submit" style="width:auto; align-self:flex-start; padding:10px 18px;">Administrar servicios y precios</button>
       </div>
 
       <div class="turno-card" style="flex-direction:column; align-items:stretch; gap:10px; margin-bottom:16px;">
