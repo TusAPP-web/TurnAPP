@@ -674,6 +674,19 @@ import { formatearRangosDisponibilidad } from "./modulos/disponibilidad.js";
     await avisar("WhatsApp de contacto guardado.");
   });
 
+  document.getElementById("btn-copiar-catalogo-menu").addEventListener("click", async () => {
+    const input = document.getElementById("link-catalogo");
+    const btn = document.getElementById("btn-copiar-catalogo-menu");
+    try {
+      await navigator.clipboard.writeText(input.value);
+      btn.textContent = "¡Copiado!";
+      setTimeout(() => { btn.textContent = "Copiar enlace"; }, 1500);
+    } catch (err) {
+      console.error("No se pudo copiar el enlace del catálogo", err);
+      await avisar("No se pudo copiar automáticamente. Podés copiar el enlace desde el campo de arriba.");
+    }
+  });
+
   document.getElementById("btn-copiar-catalogo").addEventListener("click", () => {
     const input = document.getElementById("link-catalogo");
     navigator.clipboard.writeText(input.value);
