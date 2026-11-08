@@ -151,7 +151,7 @@ import { formatearRangosDisponibilidad } from "./modulos/disponibilidad.js";
   fab.addEventListener("click", () => {
     if (vistaActual === "turnos") abrirModalTurno();
     else if (vistaActual === "servicios") abrirModalServicio();
-    else if (vistaActual === "clientes") avisar("Los clientes se cargan solos a partir de los turnos que vas guardando — no hace falta agregarlos a mano.");
+    else if (vistaActual === "clientes") abrirModalClienteManual();
     else if (vistaActual === "caja") abrirModalCaja();
   });
 
@@ -624,6 +624,7 @@ import { formatearRangosDisponibilidad } from "./modulos/disponibilidad.js";
     document.getElementById("link-catalogo").value = urlCatalogo;
 
     escucharTurnos();
+    escucharClientesManuales();
     escucharServicios();
     escucharCaja();
     escucharCategoriasCaja();
@@ -848,85 +849,97 @@ import { formatearRangosDisponibilidad } from "./modulos/disponibilidad.js";
   // tipearse distinto de un turno a otro; el teléfono es un identificador más
   // confiable. Si un turno no tiene teléfono cargado, se agrupa por nombre.)
   let ultimosTurnosClientes = [];
+  let clientesManualesCache = [];
   let filtroClientes = "";
+
+  function escucharClientesManuales(){
+    const ref = collection(db, "businesses", businessId, "clientesInfo");
+    onSnapshot(ref, (snap) => {
+      clientesManualesCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.creadoManualmente === true && c.nombre);
+      renderClientes(ultimosTurnosClientes);
+    }, err => console.error("Error cargando clientes manuales", err));
+  }
+
+  function abrirModalClienteManual(){
+    document.getElementById("cm-nombre").value = "";
+    document.getElementById("cm-whatsapp").value = "";
+    const msg = document.getElementById("cm-msg"); msg.className = "msg"; msg.textContent = "";
+    document.getElementById("modal-cliente-manual").classList.add("show");
+    document.getElementById("cm-nombre").focus();
+  }
+  const modalClienteManual = document.getElementById("modal-cliente-manual");
+  document.getElementById("cm-cancelar").addEventListener("click", () => modalClienteManual.classList.remove("show"));
+  document.getElementById("cm-guardar").addEventListener("click", async () => {
+    const nombre = document.getElementById("cm-nombre").value.trim();
+    const whatsapp = document.getElementById("cm-whatsapp").value.trim();
+    const msg = document.getElementById("cm-msg"); msg.className = "msg"; msg.textContent = "";
+    if (!nombre){ msg.className = "msg show error"; msg.textContent = "Ingresá el nombre del cliente."; return; }
+    const nombreNorm = normalizarNombre(nombre);
+    const telefonoNorm = normalizarTelefono(whatsapp);
+    const duplicado = clientesManualesCache.some(c => normalizarNombre(c.nombre) === nombreNorm || (telefonoNorm && normalizarTelefono(c.whatsapp) === telefonoNorm)) ||
+      turnosCacheGlobal.some(t => normalizarNombre(t.clienteNombre || "") === nombreNorm || (telefonoNorm && normalizarTelefono(t.clienteWhatsapp) === telefonoNorm));
+    if (duplicado){ msg.className = "msg show error"; msg.textContent = "Ya existe un cliente con ese nombre o WhatsApp."; return; }
+    try {
+      const clave = claveCliente(nombre, whatsapp);
+      await setDoc(doc(db, "businesses", businessId, "clientesInfo", clave), { nombre, whatsapp, creadoManualmente: true, actualizadoEn: serverTimestamp() }, { merge: true });
+      modalClienteManual.classList.remove("show");
+    } catch(err) {
+      console.error("Error guardando cliente manual", err);
+      msg.className = "msg show error"; msg.textContent = "No se pudo guardar. Revisá la conexión y los permisos de la cuenta.";
+    }
+  });
+
   function renderClientes(turnos){
     ultimosTurnosClientes = turnos;
     const lista = document.getElementById("clientes-list");
-    document.getElementById("clientes-sub").textContent = planActual === "pro"
-      ? "Historial completo de turnos por cliente."
-      : "En el plan gratis solo se ve la última fecha de turno de cada cliente.";
-
-    if (!turnos.length){
-      lista.innerHTML = `<div class="empty-state">Todavía no tenés clientes — se arman solos a medida que cargás turnos.</div>`;
-      return;
-    }
+    document.getElementById("clientes-sub").textContent = planActual === "pro" ? "Historial completo de turnos por cliente." : "En el plan gratis solo se ve la última fecha de turno de cada cliente.";
     const porCliente = {};
     turnos.forEach(t => {
       const nombre = t.clienteNombre || "Sin nombre";
       const telefono = normalizarTelefono(t.clienteWhatsapp);
       const clave = telefono || ("nombre:" + normalizarNombre(nombre));
-      if (!porCliente[clave]) porCliente[clave] = { turnos: [] };
+      if (!porCliente[clave]) porCliente[clave] = { turnos: [], manual: null };
       porCliente[clave].turnos.push(t);
     });
-
+    clientesManualesCache.forEach(c => {
+      const clave = claveCliente(c.nombre, c.whatsapp);
+      if (!porCliente[clave]) porCliente[clave] = { turnos: [], manual: null };
+      porCliente[clave].manual = c;
+    });
     const filtro = normalizarNombre(filtroClientes);
     const filtroTel = normalizarTelefono(filtroClientes);
-
     let grupos = Object.values(porCliente).map(info => {
-      const ordenados = info.turnos.sort((a, b) => (b.fechaHora?.toMillis?.() || 0) - (a.fechaHora?.toMillis?.() || 0));
-      const nombre = ordenados[0].clienteNombre || "Sin nombre"; // nombre más reciente del grupo
-      const whatsapp = ordenados[0].clienteWhatsapp || "";
-      return { nombre, whatsapp, ordenados };
+      const ordenados = info.turnos.sort((a,b) => (b.fechaHora?.toMillis?.() || 0) - (a.fechaHora?.toMillis?.() || 0));
+      return { nombre: ordenados[0]?.clienteNombre || info.manual?.nombre || "Sin nombre", whatsapp: ordenados[0]?.clienteWhatsapp || info.manual?.whatsapp || "", ordenados, manual: info.manual };
     });
-
-    if (filtro){
-      grupos = grupos.filter(g =>
-        normalizarNombre(g.nombre).includes(filtro) ||
-        (filtroTel && normalizarTelefono(g.whatsapp).includes(filtroTel))
-      );
-    }
-
+    if (filtro) grupos = grupos.filter(g => normalizarNombre(g.nombre).includes(filtro) || (filtroTel && normalizarTelefono(g.whatsapp).includes(filtroTel)));
     if (!grupos.length){
-      lista.innerHTML = `<div class="empty-state">No encontramos clientes para "${filtroClientes}".</div>`;
+      lista.innerHTML = `<div class="empty-state">${turnos.length || clientesManualesCache.length ? "No encontramos clientes para \"" + filtroClientes + "\"." : "Todavía no tenés clientes. Usá el botón + para agregar uno."}</div>`;
       return;
     }
-
     lista.innerHTML = "";
-    grupos
-      .sort((a, b) => a.nombre.localeCompare(b.nombre))
-      .forEach(({ nombre, whatsapp, ordenados }) => {
-        // #6: la vista previa queda simple (nombre + teléfono + mensaje); el historial
-        // completo (trabajo realizado, servicio, fecha, cobro, preferencia y comentarios)
-        // se ve en el modal aparte al tocar la tarjeta — ver abrirClienteDetalle().
-        const ultima = ordenados[0]?.fechaHora?.toDate ? ordenados[0].fechaHora.toDate() : null;
-        const card = document.createElement("div");
-        card.className = "turno-card cliente-preview";
-        card.innerHTML = `
-          <div class="turno-info">
-            <strong>${nombre}</strong>
-            <div class="turno-servicio">${whatsapp ? whatsapp : "Sin WhatsApp"} · Último turno: ${ultima ? ultima.toLocaleDateString("es-AR") : "—"}</div>
-          </div>
-          ${whatsapp ? `<button class="turno-reabrir" data-mensaje>Enviar mensaje</button>` : ""}
-          <button class="turno-reabrir" style="border-style:solid; border-color:var(--rose-deep); color:var(--rose-deep);" data-borrar>Borrar</button>
-        `;
-        card.addEventListener("click", () => abrirClienteDetalle(nombre, whatsapp, ordenados));
-        const btnMensaje = card.querySelector("[data-mensaje]");
-        if (btnMensaje){
-          btnMensaje.addEventListener("click", (e) => {
-            e.stopPropagation();
-            window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent("Hola " + nombre + "!")}`, "_blank");
-          });
+    grupos.sort((a,b) => a.nombre.localeCompare(b.nombre)).forEach(({nombre, whatsapp, ordenados, manual}) => {
+      const ultima = ordenados[0]?.fechaHora?.toDate ? ordenados[0].fechaHora.toDate() : null;
+      const card = document.createElement("div"); card.className = "turno-card cliente-preview";
+      card.innerHTML = `
+        <div class="turno-info"><strong>${nombre}</strong><div class="turno-servicio">${whatsapp || "Sin WhatsApp"} · Último turno: ${ultima ? ultima.toLocaleDateString("es-AR") : "Sin turnos"}</div></div>
+        ${whatsapp ? `<button class="turno-reabrir" data-mensaje>Enviar mensaje</button>` : ""}
+        <button class="turno-reabrir" style="border-style:solid; border-color:var(--rose-deep); color:var(--rose-deep);" data-borrar>Borrar</button>`;
+      card.addEventListener("click", () => abrirClienteDetalle(nombre, whatsapp, ordenados));
+      const btnMensaje = card.querySelector("[data-mensaje]");
+      if (btnMensaje) btnMensaje.addEventListener("click", e => { e.stopPropagation(); window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent("Hola " + nombre + "!")}`, "_blank"); });
+      card.querySelector("[data-borrar]").addEventListener("click", async e => {
+        e.stopPropagation();
+        const pregunta = ordenados.length ? `¿Borrar a ${nombre} y todos sus turnos (${ordenados.length})?` : `¿Borrar a ${nombre} de la lista de clientes?`;
+        if (await confirmarAccion(pregunta)){
+          try {
+            for (const t of ordenados) await deleteDoc(doc(db, "businesses", businessId, "turnos", t.id));
+            if (manual) await deleteDoc(doc(db, "businesses", businessId, "clientesInfo", manual.id));
+          } catch(err) { console.error("Error borrando cliente", err); await avisar("No se pudo borrar el cliente. Revisá la conexión y los permisos."); }
         }
-        card.querySelector("[data-borrar]").addEventListener("click", async (e) => {
-          e.stopPropagation();
-          if (await confirmarAccion(`¿Borrar a ${nombre} y todos sus turnos (${ordenados.length})?`)) {
-            for (const t of ordenados){
-              await deleteDoc(doc(db, "businesses", businessId, "turnos", t.id));
-            }
-          }
-        });
-        lista.appendChild(card);
       });
+      lista.appendChild(card);
+    });
   }
 
   // --- modal de historial completo del cliente (#6) ---
